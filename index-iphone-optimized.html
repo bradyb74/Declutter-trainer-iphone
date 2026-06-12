@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Creating Calm">
+    <meta name="theme-color" content="#8B7355">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%23A8D5BA' width='180' height='180'/><text x='90' y='100' font-size='80' text-anchor='middle' dominant-baseline='middle' font-family='system-ui'>🧹</text></svg>">
+    <title>Creating Calm - Decluttering Trainer</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useReducer, useEffect } = React;
+        const { Leaf, Target, Bell, Download, X } = lucide;
+
+        function DeclutterTrainer() {
+          const [userName, setUserName] = useState('');
+          const [nameInput, setNameInput] = useState('');
+          const [showNameForm, setShowNameForm] = useState(false);
+          const [showNotificationSettings, setShowNotificationSettings] = useState(false);
+          const [reminderTime, setReminderTime] = useState('09:00');
+          const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+          const [showReminderModal, setShowReminderModal] = useState(false);
+          const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+          const [deferredPrompt, setDeferredPrompt] = useState(null);
+          const [quickLogItems, setQuickLogItems] = useState('5');
+
+          // PWA install prompt handler
+          useEffect(() => {
+            const handler = (e) => {
+              e.preventDefault();
+              setDeferredPrompt(e);
+              setShowInstallPrompt(true);
+            };
+            window.addEventListener('beforeinstallprompt', handler);
+            return () => window.removeEventListener('beforeinstallprompt', handler);
+          }, []);
+
+          // Play sound alert
+          const playNotificationSound = () => {
+            try {
+              // Create a simple beep sound using Web Audio API
+              const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+              const oscillator = audioContext.createOscillator();
+              const gainNode = audioContext.createGain();
+              
+              oscillator.connect(gainNode);
+              gainNode.connect(audioContext.destination);
+              
+              oscillator.frequency.value = 800;
+              oscillator.type = 'sine';
+              
+              gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+              gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+              
+              oscillator.start(audioContext.currentTime);
+              oscillator.stop(audioContext.currentTime + 0.5);
+            } catch (e) {
+              console.log('Could not play sound');
+            }
+          };
+
+          // Trigger vibration
+          const triggerVibration = () => {
+            if (navigator.vibrate) {
+              navigator.vibrate([200, 100, 200]);
+            }
+          };
+
+          // Load data from localStorage on first render
+          useEffect(() => {
+            try {
+              const saved = localStorage.getItem('declutterTrainerName');
+              const savedTime = localStorage.getItem('declutterReminderTime');
+              const savedNotif = localStorage.getItem('declutterNotificationsEnabled');
+              
+              if (saved) {
+                setUserName(saved);
+              } else {
+                setShowNameForm(true);
+              }
+              
+              if (savedTime) {
+                setReminderTime(savedTime);
+              }
+              
+              if (savedNotif) {
+                setNotificationsEnabled(JSON.parse(savedNotif));
+              }
+
+              checkForReminder();
+            } catch (e) {
+              setShowNameForm(true);
+            }
+          }, []);
+
+          // Check for reminder and trigger alert
+          const checkForReminder = () => {
+            const today = new Date().toDateString();
+            const lastLogged = localStorage.getItem('declutterLastLogged');
+            const hasBeenReminded = localStorage.getItem('declutterReminderShown') === today;
+
+            if (lastLogged !== today && !hasBeenReminded && userName) {
+              setShowReminderModal(true);
+              localStorage.setItem('declutterReminderShown', today);
+              
+              // Trigger sound and vibration
+              if (notificationsEnabled) {
+                setTimeout(() => {
+                  playNotificationSound();
+                  triggerVibration();
+                }, 300);
+              }
+            }
+          };
+
+          const handleInstallApp = async () => {
+            if (deferredPrompt) {
+              deferredPrompt.prompt();
+              const { outcome } = await deferredPrompt.userChoice;
+              if (outcome === 'accepted') {
+                setShowInstallPrompt(false);
+              }
+              setDeferredPrompt(null);
+            }
+          };
+
+          const handleNameSubmit = () => {
+            if (nameInput.trim()) {
+              setUserName(nameInput.trim());
+              setNameInput('');
+              setShowNameForm(false);
+              try {
+                localStorage.setItem('declutterTrainerName', nameInput.trim());
+              } catch (e) {
+                console.log('Could not save name');
+              }
+            }
+          };
+
+          const handleChangeName = () => {
+            setNameInput(userName);
+            setShowNameForm(true);
+          };
+
+          const challenges = [
+            { area: 'Kitchen', task: 'Go through one kitchen drawer. Keep only what you actually use.', icon: '🍴' },
+            { area: 'Bedroom', task: 'Pick one shelf or surface. Remove items you haven\'t touched in 2 years.', icon: '🛏️' },
+            { area: 'Closet', task: 'Sort through 10 pieces of clothing. Ask: would my kids treasure this?', icon: '👕' },
+            { area: 'Living Room', task: 'Clear one shelf, side table, or corner. Keep what brings calm.', icon: '🛋️' },
+            { area: 'Bathroom', task: 'Declutter one medicine cabinet or drawer. Toss expired items.', icon: '🚿' },
+            { area: 'Garage/Storage', task: 'Find one box or bin. Honestly assess what\'s really useful.', icon: '🔧' },
+            { area: 'Papers & Desk', task: 'File or shred 15 pieces of paper. Let go of "someday" documents.', icon: '📄' },
+            { area: 'Hallway/Entryway', task: 'Clear one area. Remove items blocking calm entry to your home.', icon: '🚪' },
+            { area: 'Kids Room', task: 'Declutter toys/items they\'ve outgrown. Ask them first!', icon: '🧸' },
+            { area: 'Any Area', task: 'Pick any space. Remove 5 items you don\'t need. That\'s enough!', icon: '✨' },
+          ];
+
+          const motivationalMessages = [
+            `${userName}, you're giving your children the gift of simplicity.`,
+            `Every item you remove creates space for peace, ${userName}.`,
+            `Your kids will remember the calm, not the clutter, ${userName}.`,
+            `This is an act of love—for your space and your family, ${userName}.`,
+            `Small steps, big impact. You've got this, ${userName}.`,
+            `Clearing clutter is clearing your mind, ${userName}.`,
+            `Future you will thank present you, ${userName}.`,
+            `Every single item counts. You're doing great, ${userName}!`,
+            `Your home reflects what you value. You're choosing peace, ${userName}.`,
+          ];
+
+          const tips = [
+            "🎯 Ask: 'Would my kids want this?' If no, it's okay to let it go.",
+            "💭 Remember: Keeping something 'just in case' takes up mental space too.",
+            "📦 Donate or sell. Someone else might treasure it—and you'll feel better.",
+            "🚫 It's okay to feel guilty about waste. That's healthy. Learn and move on.",
+            "⏰ 10 minutes is enough. Consistency matters more than marathon sessions.",
+            "📸 Take before/after photos. You'll see the transformation!",
+            "👥 Tell your kids what you're doing. They'll appreciate your effort.",
+            "✨ One shelf cleared = a win. Celebrate it.",
+          ];
+
+          const initialState = {
+            streak: 0,
+            totalItemsRemoved: 0,
+            sessions: [],
+            lastSessionDate: null,
+          };
+
+          const getSavedState = () => {
+            try {
+              const saved = localStorage.getItem('declutterTrainerState');
+              return saved ? JSON.parse(saved) : initialState;
+            } catch (e) {
+              return initialState;
+            }
+          };
+
+          const reducer = (state, action) => {
+            let newState;
+            switch (action.type) {
+              case 'LOG_SESSION':
+                const today = new Date().toDateString();
+                const isConsecutive = state.lastSessionDate === new Date(Date.now() - 86400000).toDateString();
+                newState = {
+                  ...state,
+                  totalItemsRemoved: state.totalItemsRemoved + action.payload.itemsRemoved,
+                  streak: state.lastSessionDate === today ? state.streak : (isConsecutive ? state.streak + 1 : 1),
+                  sessions: [
+                    ...state.sessions,
+                    {
+                      date: today,
+                      area: action.payload.area,
+                      itemsRemoved: action.payload.itemsRemoved,
+                      note: action.payload.note,
+                    },
+                  ],
+                  lastSessionDate: today,
+                };
+                try {
+                  localStorage.setItem('declutterTrainerState', JSON.stringify(newState));
+                  localStorage.setItem('declutterLastLogged', today);
+                } catch (e) {
+                  console.log('Could not save to localStorage');
+                }
+                return newState;
+              case 'RESET_DATA':
+                try {
+                  localStorage.removeItem('declutterTrainerState');
+                } catch (e) {
+                  console.log('Could not clear localStorage');
+                }
+                return initialState;
+              default:
+                return state;
+            }
+          };
+
+          const [state, dispatch] = useReducer(reducer, getSavedState());
+          const [itemsRemoved, setItemsRemoved] = useState('');
+          const [sessionNote, setSessionNote] = useState('');
+          const [showForm, setShowForm] = useState(false);
+          const [selectedChallenge, setSelectedChallenge] = useState(challenges[0]);
+
+          const today = new Date().toDateString();
+          const alreadyLogged = state.sessions.some(s => s.date === today);
+
+          const handleLogSession = () => {
+            if (itemsRemoved && selectedChallenge) {
+              dispatch({
+                type: 'LOG_SESSION',
+                payload: {
+                  area: selectedChallenge.area,
+                  itemsRemoved: parseInt(itemsRemoved),
+                  note: sessionNote,
+                },
+              });
+              setItemsRemoved('');
+              setSessionNote('');
+              setShowForm(false);
+              setShowReminderModal(false);
+            }
+          };
+
+          const handleQuickLog = () => {
+            dispatch({
+              type: 'LOG_SESSION',
+              payload: {
+                area: selectedChallenge.area,
+                itemsRemoved: parseInt(quickLogItems) || 5,
+                note: 'Quick log',
+              },
+            });
+            setShowReminderModal(false);
+            triggerVibration();
+          };
+
+          const handleResetData = () => {
+            if (window.confirm('Are you sure? This will clear all your progress.')) {
+              dispatch({ type: 'RESET_DATA' });
+            }
+          };
+
+          const randomMessage = motivationalMessages[Math.floor(Math.random() * motivationalMessages.length)];
+          const randomTip = tips[Math.floor(Math.random() * tips.length)];
+
+          // Welcome screen
+          if (showNameForm) {
+            return (
+              <div style={{ backgroundColor: '#F5F1E8', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+                <div style={{ maxWidth: '500px', backgroundColor: 'white', padding: '40px', borderRadius: '12px', boxShadow: '0 4px 16px rgba(139, 115, 85, 0.15)', textAlign: 'center' }}>
+                  <h1 style={{ fontSize: '32px', color: '#8B7355', marginBottom: '15px', fontWeight: '300' }}>
+                    Welcome 👋
+                  </h1>
+                  <p style={{ fontSize: '16px', color: '#9B8B7E', marginBottom: '30px', lineHeight: '1.6' }}>
+                    Let's create calm together. What's your name?
+                  </p>
+                  <div style={{ marginBottom: '20px' }}>
+                    <input
+                      type="text"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          handleNameSubmit();
+                        }
+                      }}
+                      placeholder="Your name"
+                      autoFocus
+                      style={{
+                        width: '100%',
+                        padding: '14px',
+                        borderRadius: '8px',
+                        border: '2px solid #D4C4B9',
+                        fontSize: '18px',
+                        boxSizing: 'border-box',
+                        fontFamily: 'inherit',
+                      }}
+                    />
+                  </div>
+                  <button
+                    onClick={handleNameSubmit}
+                    disabled={!nameInput.trim()}
+                    style={{
+                      width: '100%',
+                      backgroundColor: nameInput.trim() ? '#A8D5BA' : '#D4C4B9',
+                      color: 'white',
+                      border: 'none',
+                      padding: '16px',
+                      borderRadius: '8px',
+                      fontSize: '18px',
+                      cursor: nameInput.trim() ? 'pointer' : 'not-allowed',
+                      fontWeight: '500',
+                    }}
+                  >
+                    Get Started
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          // Main app
+          return (
+            <div style={{ backgroundColor: '#F5F1E8', minHeight: '100vh', paddingBottom: '20px', fontFamily: 'system-ui, -apple-system, sans-serif', paddingTop: 'max(20px, env(safe-area-inset-top))' }}>
+              <div style={{ maxWidth: '900px', margin: '0 auto', padding: '0 20px' }}>
+                
+                {/* Install Prompt Banner */}
+                {showInstallPrompt && (
+                  <div style={{
+                    backgroundColor: '#E8936C',
+                    color: 'white',
+                    padding: '15px',
+                    borderRadius: '8px',
+                    marginBottom: '20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                      <Download size={20} />
+                      <div>
+                        <div style={{ fontWeight: '500', fontSize: '14px' }}>Add to Home Screen</div>
+                        <div style={{ fontSize: '12px', opacity: 0.9 }}>Get notifications & quick access</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleInstallApp}
+                      style={{
+                        backgroundColor: 'rgba(255,255,255,0.3)',
+                        color: 'white',
+                        border: 'none',
+                        padding: '8px 16px',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontWeight: '500',
+                        fontSize: '14px',
+                      }}
+                    >
+                      Add
+                    </button>
+                    <button
+                      onClick={() => setShowInstallPrompt(false)}
+                      style={{
+                        backgroundColor: 'transparent',
+                        color: 'white',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '4px',
+                      }}
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                )}
+
+                <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+                  <h1 style={{ fontSize: '36px', color: '#8B7355', marginBottom: '5px', fontWeight: '300', letterSpacing: '-0.5px' }}>
+                    Creating Calm
+                  </h1>
+                  <p style={{ fontSize: '16px', color: '#9B8B7E', fontStyle: 'italic', margin: '0', marginBottom: '15px' }}>
+                    10 minutes a day to a lighter space.
+                  </p>
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', fontSize: '13px', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={handleChangeName}
+                      style={{
+                        color: '#9B8B7E',
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Hi {userName}
+                    </button>
+                    <span style={{ color: '#D4C4B9' }}>•</span>
+                    <button
+                      onClick={() => setShowNotificationSettings(!showNotificationSettings)}
+                      style={{
+                        color: '#9B8B7E',
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <Bell size={12} /> Alerts
+                    </button>
+                  </div>
+                </div>
+
+                {/* Notification Settings */}
+                {showNotificationSettings && (
+                  <div style={{
+                    backgroundColor: 'white',
+                    padding: '20px',
+                    borderRadius: '8px',
+                    marginBottom: '30px',
+                    boxShadow: '0 2px 8px rgba(139, 115, 85, 0.08)',
+                    borderLeft: '4px solid #E8936C',
+                  }}>
+                    <h3 style={{ margin: '0 0 15px 0', color: '#8B7355', fontSize: '18px' }}>🔔 Alert Settings</h3>
+                    <div style={{ marginBottom: '15px' }}>
+                      <label style={{ display: 'block', marginBottom: '8px', color: '#8B7355', fontWeight: '500' }}>
+                        Daily reminder at:
+                      </label>
+                      <input
+                        type="time"
+                        value={reminderTime}
+                        onChange={(e) => {
+                          setReminderTime(e.target.value);
+                          localStorage.setItem('declutterReminderTime', e.target.value);
+                        }}
+                        style={{
+                          padding: '12px',
+                          borderRadius: '6px',
+                          border: '1px solid #D4C4B9',
+                          fontSize: '16px',
+                        }}
+                      />
+                      <p style={{ fontSize: '13px', color: '#9B8B7E', margin: '8px 0 0 0' }}>
+                        Sound + vibration alert + reminder popup
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setNotificationsEnabled(!notificationsEnabled);
+                        localStorage.setItem('declutterNotificationsEnabled', !notificationsEnabled);
+                        if (!notificationsEnabled) {
+                          playNotificationSound();
+                          triggerVibration();
+                        }
+                      }}
+                      style={{
+                        backgroundColor: notificationsEnabled ? '#A8D5BA' : '#E8936C',
+                        color: 'white',
+                        border: 'none',
+                        padding: '12px 20px',
+                        borderRadius: '6px',
+                        fontSize: '16px',
+                        cursor: 'pointer',
+                        fontWeight: '500',
+                      }}
+                    >
+                      {notificationsEnabled ? '✓ Alerts ON' : 'Turn ON Alerts'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Reminder Modal */}
+                {showReminderModal && !alreadyLogged && (
+                  <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    alignItems: 'flex-end',
+                    zIndex: 1000,
+                    padding: '20px',
+                  }}>
+                    <div style={{
+                      backgroundColor: 'white',
+                      padding: '30px 20px',
+                      borderRadius: '16px 16px 0 0',
+                      width: '100%',
+                      maxWidth: '500px',
+                      textAlign: 'center',
+                    }}>
+                      <h2 style={{ fontSize: '28px', color: '#8B7355', margin: '0 0 10px 0' }}>
+                        Time to declutter! 🧹
+                      </h2>
+                      <p style={{ color: '#9B8B7E', margin: '10px 0 25px 0', lineHeight: '1.6', fontSize: '16px' }}>
+                        Just 10 minutes. Your space will thank you.
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <button
+                          onClick={handleQuickLog}
+                          style={{
+                            backgroundColor: '#A8D5BA',
+                            color: 'white',
+                            border: 'none',
+                            padding: '16px',
+                            borderRadius: '8px',
+                            fontSize: '16px',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                          }}
+                        >
+                          ✓ Quick Log (5 items)
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowForm(true);
+                            setShowReminderModal(false);
+                          }}
+                          style={{
+                            backgroundColor: '#E8936C',
+                            color: 'white',
+                            border: 'none',
+                            padding: '16px',
+                            borderRadius: '8px',
+                            fontSize: '16px',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                          }}
+                        >
+                          📋 Custom Log
+                        </button>
+                        <button
+                          onClick={() => setShowReminderModal(false)}
+                          style={{
+                            backgroundColor: '#E8E0D4',
+                            color: '#8B7355',
+                            border: 'none',
+                            padding: '16px',
+                            borderRadius: '8px',
+                            fontSize: '16px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Later
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                  gap: '12px',
+                  marginBottom: '30px',
+                }}>
+                  <div style={{
+                    backgroundColor: '#A8D5BA',
+                    padding: '20px',
+                    borderRadius: '8px',
+                    textAlign: 'center',
+                    color: 'white',
+                  }}>
+                    <div style={{ fontSize: '32px', fontWeight: 'bold' }}>{state.streak}</div>
+                    <div style={{ fontSize: '11px', opacity: 0.9, marginTop: '5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Days</div>
+                  </div>
+                  <div style={{
+                    backgroundColor: '#E8936C',
+                    padding: '20px',
+                    borderRadius: '8px',
+                    textAlign: 'center',
+                    color: 'white',
+                  }}>
+                    <div style={{ fontSize: '32px', fontWeight: 'bold' }}>{state.totalItemsRemoved}</div>
+                    <div style={{ fontSize: '11px', opacity: 0.9, marginTop: '5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Items</div>
+                  </div>
+                  <div style={{
+                    backgroundColor: '#C4A697',
+                    padding: '20px',
+                    borderRadius: '8px',
+                    textAlign: 'center',
+                    color: 'white',
+                  }}>
+                    <div style={{ fontSize: '32px', fontWeight: 'bold' }}>{state.sessions.length}</div>
+                    <div style={{ fontSize: '11px', opacity: 0.9, marginTop: '5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Sessions</div>
+                  </div>
+                </div>
+
+                <div style={{
+                  backgroundColor: '#A8D5BA',
+                  padding: '20px',
+                  borderRadius: '8px',
+                  marginBottom: '30px',
+                  borderLeft: '4px solid #8B7355',
+                }}>
+                  <p style={{ color: '#5A3E33', margin: '0', fontSize: '15px', fontWeight: '500', lineHeight: '1.5' }}>
+                    💚 {randomMessage}
+                  </p>
+                </div>
+
+                <div style={{
+                  backgroundColor: 'white',
+                  padding: '24px',
+                  borderRadius: '8px',
+                  marginBottom: '30px',
+                  boxShadow: '0 2px 8px rgba(139, 115, 85, 0.08)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
+                    <div style={{ fontSize: '36px' }}>{selectedChallenge.icon}</div>
+                    <div style={{ flex: 1 }}>
+                      <h2 style={{ margin: '0', color: '#8B7355', fontSize: '20px' }}>Today's Challenge</h2>
+                      <p style={{ margin: '4px 0 0 0', color: '#9B8B7E', fontSize: '13px' }}>{selectedChallenge.area}</p>
+                    </div>
+                  </div>
+                  <p style={{ color: '#5A3E33', fontSize: '15px', lineHeight: '1.6', margin: '20px 0' }}>
+                    {selectedChallenge.task}
+                  </p>
+
+                  {alreadyLogged ? (
+                    <div style={{
+                      backgroundColor: '#F0F0E0',
+                      padding: '15px',
+                      borderRadius: '6px',
+                      textAlign: 'center',
+                      color: '#9B8B7E',
+                    }}>
+                      ✓ Done today! Great job!
+                    </div>
+                  ) : !showForm ? (
+                    <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+                      <button
+                        onClick={() => {
+                          setItemsRemoved('5');
+                          handleLogSession();
+                        }}
+                        style={{
+                          backgroundColor: '#A8D5BA',
+                          color: 'white',
+                          border: 'none',
+                          padding: '14px',
+                          borderRadius: '6px',
+                          fontSize: '16px',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                        }}
+                      >
+                        ✓ Quick Log 5 Items
+                      </button>
+                      <button
+                        onClick={() => setShowForm(true)}
+                        style={{
+                          backgroundColor: '#E8936C',
+                          color: 'white',
+                          border: 'none',
+                          padding: '14px',
+                          borderRadius: '6px',
+                          fontSize: '16px',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                        }}
+                      >
+                        📋 Custom Log
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: '20px' }}>
+                      <div style={{ marginBottom: '15px' }}>
+                        <label style={{ display: 'block', marginBottom: '8px', color: '#8B7355', fontWeight: '500' }}>
+                          Items removed
+                        </label>
+                        <input
+                          type="number"
+                          value={itemsRemoved}
+                          onChange={(e) => setItemsRemoved(e.target.value)}
+                          placeholder="5"
+                          autoFocus
+                          style={{
+                            width: '100%',
+                            padding: '12px',
+                            borderRadius: '6px',
+                            border: '1px solid #D4C4B9',
+                            fontSize: '16px',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+                      <div style={{ marginBottom: '15px' }}>
+                        <label style={{ display: 'block', marginBottom: '8px', color: '#8B7355', fontWeight: '500' }}>
+                          Notes (optional)
+                        </label>
+                        <textarea
+                          value={sessionNote}
+                          onChange={(e) => setSessionNote(e.target.value)}
+                          placeholder="How did it feel?"
+                          style={{
+                            width: '100%',
+                            padding: '12px',
+                            borderRadius: '6px',
+                            border: '1px solid #D4C4B9',
+                            fontSize: '14px',
+                            boxSizing: 'border-box',
+                            fontFamily: 'inherit',
+                            minHeight: '60px',
+                            resize: 'vertical',
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+                        <button
+                          onClick={handleLogSession}
+                          style={{
+                            backgroundColor: '#A8D5BA',
+                            color: 'white',
+                            border: 'none',
+                            padding: '14px',
+                            borderRadius: '6px',
+                            fontSize: '16px',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                          }}
+                        >
+                          Save & Celebrate
+                        </button>
+                        <button
+                          onClick={() => setShowForm(false)}
+                          style={{
+                            backgroundColor: '#E8E0D4',
+                            color: '#8B7355',
+                            border: 'none',
+                            padding: '14px',
+                            borderRadius: '6px',
+                            fontSize: '16px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{
+                  backgroundColor: '#FFF9F0',
+                  padding: '20px',
+                  borderRadius: '8px',
+                  marginBottom: '30px',
+                  borderLeft: '4px solid #E8936C',
+                }}>
+                  <p style={{ color: '#5A3E33', margin: '0', fontSize: '14px', lineHeight: '1.5' }}>
+                    {randomTip}
+                  </p>
+                </div>
+
+                {state.sessions.length > 0 && (
+                  <div style={{ marginBottom: '30px' }}>
+                    <h3 style={{ color: '#8B7355', fontSize: '16px', marginBottom: '12px' }}>Recent</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {state.sessions.slice().reverse().slice(0, 5).map((session, idx) => (
+                        <div key={idx} style={{
+                          backgroundColor: 'white',
+                          padding: '12px',
+                          borderRadius: '6px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          boxShadow: '0 1px 4px rgba(139, 115, 85, 0.06)',
+                        }}>
+                          <div>
+                            <div style={{ fontWeight: '500', color: '#8B7355', fontSize: '14px' }}>{session.area}</div>
+                            <div style={{ fontSize: '12px', color: '#9B8B7E', marginTop: '2px' }}>{session.date}</div>
+                          </div>
+                          <div style={{ backgroundColor: '#A8D5BA', color: 'white', padding: '6px 12px', borderRadius: '6px', fontWeight: '500', fontSize: '14px' }}>
+                            {session.itemsRemoved}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{
+                  backgroundColor: '#8B7355',
+                  padding: '24px',
+                  borderRadius: '8px',
+                  textAlign: 'center',
+                  color: 'white',
+                  marginBottom: '20px',
+                }}>
+                  <h3 style={{ margin: '0 0 10px 0', fontSize: '20px' }}>You've Got This 💚</h3>
+                  <p style={{ margin: '0', opacity: 0.9, lineHeight: '1.6', fontSize: '14px' }}>
+                    Every item removed is peace created. Your kids notice.
+                  </p>
+                </div>
+
+                <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                  <button
+                    onClick={handleResetData}
+                    style={{
+                      backgroundColor: 'transparent',
+                      color: '#9B8B7E',
+                      border: '1px solid #D4C4B9',
+                      padding: '10px 16px',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Clear data
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<DeclutterTrainer />);
+    </script>
+</body>
+</html>
